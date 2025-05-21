@@ -1,3 +1,8 @@
+# Cоздать сервис,
+# который забирает данные по API, сохраняет их в базу данных
+# и реализует API интерфейс для работы с данными в базе,
+# используя FastAIP и SQLAlchemy для работы с базой.
+
 import os
 import json
 import re
@@ -14,11 +19,9 @@ from email.mime.multipart import MIMEMultipart
 import logging
 from contextlib import asynccontextmanager
 
-# Настройка логгирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Модели Pydantic
 class SellerBase(BaseModel):
     name: str
     email: str = Field(..., pattern=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -63,13 +66,11 @@ class Sale(SaleBase):
 class StatisticsRequest(BaseModel):
     email: str = Field(..., pattern=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
-# Настройка базы данных
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./sql_app.db")
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Модели SQLAlchemy
 class DBSeller(Base):
     __tablename__ = "sellers"
 
@@ -93,13 +94,10 @@ class DBSale(Base):
     quantity = Column(Integer)
     sale_date = Column(DateTime, default=datetime.utcnow)
 
-# Создание таблиц
 Base.metadata.create_all(bind=engine)
 
-# Инициализация FastAPI с lifespan-обработчиками
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Инициализация Redis
     redis_cache = FastApiRedisCache()
     redis_cache.init(
         host_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
@@ -111,7 +109,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Dependency для получения сессии базы данных
 def get_db():
     db = SessionLocal()
     try:
@@ -119,7 +116,6 @@ def get_db():
     finally:
         db.close()
 
-# Функция для отправки email
 def send_email(to_email: str, subject: str, body: str):
     smtp_server = os.getenv("SMTP_SERVER", "smtp.example.com")
     smtp_port = int(os.getenv("SMTP_PORT", 587))
@@ -144,7 +140,6 @@ def send_email(to_email: str, subject: str, body: str):
         logger.error(f"Failed to send email to {to_email}: {str(e)}")
         raise
 
-# Функция для сбора статистики
 def gather_statistics(db: Session):
     sellers_stats = []
     sellers = db.query(DBSeller).all()
@@ -174,7 +169,6 @@ def gather_statistics(db: Session):
 
     return sellers_stats
 
-# Функция для генерации отчета
 def generate_statistics_report(stats: List[dict]) -> str:
     report_lines = ["Статистика по продавцам", "=" * 30, ""]
 
@@ -190,7 +184,6 @@ def generate_statistics_report(stats: List[dict]) -> str:
     report_lines.append(f"Отчет сгенерирован: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return "\n".join(report_lines)
 
-# Фоновая задача для отправки статистики
 def send_statistics_email(email: str, db: Session):
     try:
         stats = gather_statistics(db)
@@ -204,7 +197,6 @@ def send_statistics_email(email: str, db: Session):
         logger.error(f"Error in background task: {str(e)}")
         raise
 
-# API Endpoints
 @app.post("/sellers/", response_model=Seller)
 @cache(expire=60)
 def create_seller(seller: SellerCreate, db: Session = Depends(get_db)):
